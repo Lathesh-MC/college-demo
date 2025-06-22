@@ -1,4 +1,4 @@
 # college-demo
 This is my first Git Repository.
 <br>
-Author - Lathesh MC
+Author - Lathesh MC (React Developer)
