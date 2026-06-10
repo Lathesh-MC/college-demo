@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>SIM · Neural Hierarchy Explorer | Corrected</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none; /* avoid accidental text selection while dragging */
+  }
+  :root {
+    --bg-1: #05070f;
+    --bg-2: #0b1224;
+    --bg-3: #10182f;
+    --ink: #e6edf7;
+    --ink-dim: #8a98b3;
+    --accent: #7df9ff;
+    --accent-2: #ff6ad5;
+    --gold: #ffd166;
+    --line: rgba(125,249,255,.25);
+    --line-dim: rgba(140,160,200,.18);
+    --glow: 0 0 18px rgba(125,249,255,.35);
+  }
+  html, body { height: 100%; margin: 0; padding: 0; background: var(--bg-1); overflow-x: hidden; }
+  body {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(255,106,213,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(125,249,255,.10), transparent 60%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-2));
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(125,249,255,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(125,249,255,.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 75%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 60s linear infinite;
+  }
+  @keyframes drift {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 480px 480px, 480px 480px; }
+  }
+  .shell {
+    position: relative; z-index: 2;
+    max-width: 1600px; margin: 0 auto;
+    padding: clamp(12px, 2vw, 28px);
+  }
+  header.topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+    padding: 14px 18px;
+    border-radius: 22px;
+    background: linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    border: 1px solid rgba(125,249,255,.18);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .logo-orb {
+    width: 44px; height: 44px; border-radius: 14px;
+    background: radial-gradient(circle at 30% 30%, #fff, #7df9ff 35%, #2b6cff 70%, #1a1f3a 100%);
+    box-shadow: 0 0 30px rgba(125,249,255,.6), inset 0 0 12px rgba(255,255,255,.4);
+    animation: pulse 3s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 22px rgba(125,249,255,.45), inset 0 0 12px rgba(255,255,255,.4); }
+    50%     { box-shadow: 0 0 38px rgba(125,249,255,.85), inset 0 0 16px rgba(255,255,255,.6); }
+  }
+  h1 {
+    margin: 0; font-size: clamp(18px, 2.2vw, 26px); font-weight: 700; letter-spacing: .5px;
+    background: linear-gradient(120deg, #fff 0%, #7df9ff 45%, #ff6ad5 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-dim); letter-spacing: 1px; text-transform: uppercase; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    appearance: none; border: 1px solid rgba(125,249,255,.35);
+    background: rgba(125,249,255,.06); color: var(--ink);
+    padding: 9px 16px; border-radius: 999px;
+    font: 600 12px/1 'Space Grotesk', sans-serif; letter-spacing: .4px;
+    cursor: pointer; transition: transform .15s ease, background .2s ease, box-shadow .2s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn:hover { background: rgba(125,249,255,.16); box-shadow: var(--glow); transform: translateY(-1px); }
+  .btn.primary { background: linear-gradient(135deg, #7df9ff, #2b6cff); color: #031018; border-color: transparent; }
+  .btn.primary:hover { box-shadow: 0 0 28px rgba(125,249,255,.7); }
+  .btn .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .stage {
+    position: relative; margin-top: 16px; border-radius: 28px;
+    background:
+      radial-gradient(1000px 600px at 50% 50%, rgba(43,108,255,.10), transparent 60%),
+      linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+    border: 1px solid rgba(125,249,255,.18);
+    box-shadow: 0 30px 80px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.02);
+    height: clamp(560px, 78vh, 920px); overflow: hidden; backdrop-filter: blur(8px);
+  }
+  .stage::after {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(closest-side at 50% 50%, transparent 55%, rgba(0,0,0,.45) 100%);
+    pointer-events: none;
+  }
+  svg.canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+  svg.canvas:active { cursor: grabbing; }
+  .hud { position: absolute; left: 14px; top: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 5; }
+  .chip {
+    font: 500 11px/1 'JetBrains Mono', monospace; letter-spacing: .5px;
+    padding: 8px 12px; border-radius: 999px;
+    background: rgba(10,16,32,.6); border: 1px solid rgba(125,249,255,.25);
+    color: var(--ink); display: inline-flex; align-items: center; gap: 8px; backdrop-filter: blur(8px);
+  }
+  .chip .k { color: var(--accent); }
+  .legend {
+    position: absolute; right: 14px; top: 14px; z-index: 5;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 12px; background: rgba(10,16,32,.55);
+    border: 1px solid rgba(125,249,255,.2); border-radius: 16px;
+    backdrop-filter: blur(8px); max-width: 240px;
+  }
+  .legend h4 { margin: 0 0 4px 0; font-size: 11px; letter-spacing: 1.2px; color: var(--ink-dim); text-transform: uppercase; font-weight: 700; }
+  .legend .row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink); }
+  .legend .swatch { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+  .footer-help {
+    margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--ink-dim);
+  }
+  .kbd {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(125,249,255,.08); border: 1px solid rgba(125,249,255,.2);
+    padding: 2px 8px; border-radius: 8px; color: var(--ink);
+  }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 20;
+    background: rgba(8,14,28,.94); border: 1px solid rgba(125,249,255,.5);
+    color: var(--ink); padding: 8px 12px; border-radius: 12px;
+    font-size: 12px; letter-spacing: .2px;
+    box-shadow: 0 12px 24px rgba(0,0,0,.45), 0 0 18px rgba(125,249,255,.2);
+    opacity: 0; transform: translateY(4px);
+    transition: opacity .15s ease, transform .15s ease; white-space: nowrap;
+  }
+  .tip.show { opacity: 1; transform: translateY(0); }
+  .tip b { color: var(--accent); }
+  .node-circle { filter: drop-shadow(0 6px 12px rgba(0,0,0,.6)); transition: stroke-width .2s ease; }
+  .node-label { pointer-events: none; font-family: 'Space Grotesk', sans-serif; text-anchor: middle; dominant-baseline: central; fill: #fff; }
+  .pill rect { filter: drop-shadow(0 4px 10px rgba(0,0,0,.5)); }
+  .link-line { fill: none; stroke-linecap: round; }
+  @media (max-width: 720px) {
+    .legend { display: none; }
+    .hud { top: 10px; left: 10px; }
+    .stage { height: 72vh; min-height: 520px; }
+  }
+  .particles circle { fill: rgba(125,249,255,.25); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-orb" aria-hidden="true"></div>
+      <div>
+        <h1>SIM · Neural Hierarchy Explorer</h1>
+        <div class="sub">interactive map · click to expand · drag to arrange</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="expandAllBtn"><span class="dot"></span> Expand all</button>
+      <button class="btn" id="resetBtn">⟳ Reset</button>
+      <button class="btn primary" id="centerBtn">🎯 Re-center</button>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <div class="hud">
+      <div class="chip"><span class="k">TIP</span> click <b>SIM</b> to reveal modules</div>
+      <div class="chip" id="modeChip"><span class="k">MODE</span> explore</div>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <h4>Legend</h4>
+      <div class="row"><span class="swatch" style="color:#ffd166;background:#ffd166"></span> SIM core</div>
+      <div class="row"><span class="swatch" style="color:#7df9ff;background:#7df9ff"></span> Main module</div>
+      <div class="row"><span class="swatch" style="color:#79f2c0;background:#79f2c0"></span> Depth 1</div>
+      <div class="row"><span class="swatch" style="color:#b18bff;background:#b18bff"></span> Depth 2</div>
+      <div class="row"><span class="swatch" style="color:#ff9f6a;background:#ff9f6a"></span> Depth 3</div>
+      <div class="row"><span class="swatch" style="color:#94a3b8;background:#94a3b8"></span> Depth 4+ / leaf</div>
+      <div class="row" style="margin-top:4px;color:var(--ink-dim);font-size:11px">
+        <b style="color:#fff">Bold</b> = expandable children
+      </div>
+    </div>
+    <svg class="canvas" id="canvas"></svg>
+    <div class="tip" id="tip"></div>
+  </div>
+
+  <div class="footer-help">
+    <div>
+      <span class="kbd">click</span> expand/collapse &nbsp;·&nbsp;
+      <span class="kbd">drag</span> rearrange &nbsp;·&nbsp;
+      <span class="kbd">scroll</span> zoom &nbsp;·&nbsp;
+      <span class="kbd">click main module after Expand-All</span> highlights linked modules
+    </div>
+    <div>SIM → Comparison · Work Bench · Process Flow · Role Management · Search Engine · Scrap Framework</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ----------------------------------------------
+  // CLEAN NODE DATABASE (no stray HTML / fixed)
+  // ----------------------------------------------
+  const NODES = {
+    SIM: { label:'SIM', kind:'core', color:'#ffd166', depth:-1 },
+    Comparison:     { label:'Comparison',      kind:'module', color:'#7df9ff', depth:0 },
+    WorkBench:      { label:'Work Bench',      kind:'module', color:'#7df9ff', depth:0 },
+    ProcessFlow:    { label:'Process Flow',    kind:'module', color:'#7df9ff', depth:0 },
+    RoleManagement: { label:'Role Management', kind:'module', color:'#7df9ff', depth:0 },
+    SearchEngine:   { label:'Search Engine',   kind:'module', color:'#7df9ff', depth:0 },
+    ScrapFramework: { label:'Scrap Framework', kind:'module', color:'#7df9ff', depth:0 },
+
+    CompValTemplate: { label:'Comparison validation template', kind:'pill', color:'#7df9ff', depth:1 },
+    AuditTrail:      { label:'Audit trail on each run',        kind:'pill', color:'#7df9ff', depth:1 },
+    Summary:         { label:'Summary',                         kind:'pill', color:'#79f2c0', depth:1 },
+    NewItem:         { label:'New item',         kind:'pill', color:'#b18bff', depth:2 },
+    RemovedItem:     { label:'Removed item',     kind:'pill', color:'#b18bff', depth:2 },
+    ModifiedItem:    { label:'Modified item',    kind:'pill', color:'#b18bff', depth:2 },
+    UnchangedItem:   { label:'Unchanged items',  kind:'pill', color:'#b18bff', depth:2 },
+    ReappearedItem:  { label:'Re-appeared items',kind:'pill', color:'#b18bff', depth:2 },
+
+    ManualAddition:  { label:'Manual addition',    kind:'circle', color:'#79f2c0', depth:1 },
+    TemplateMgmt:    { label:'Template management',kind:'circle', color:'#b18bff', depth:2 },
+    ModifyMDB:       { label:'Modify MDB',         kind:'circle', color:'#b18bff', depth:2 },
+    ApproveTpl:      { label:'Approve new template',     kind:'circle', color:'#ff9f6a', depth:3 },
+    AddTpl:          { label:'Add new template',         kind:'circle', color:'#ff9f6a', depth:3 },
+    EditTpl:         { label:'Template edit/update/add', kind:'circle', color:'#ff9f6a', depth:3 },
+    EditParams:      { label:'Edit parameters',          kind:'circle', color:'#ff9f6a', depth:3 },
+    EditMDB:         { label:'Edit MDB',                 kind:'circle', color:'#ff9f6a', depth:3 },
+
+    FormMgmt:        { label:'Form Management',  kind:'circle', color:'#79f2c0', depth:1 },
+    CreateProcess:   { label:'Create new process',kind:'circle', color:'#79f2c0', depth:1 },
+    RuleBookMgmt:    { label:'Rule book mgmt',   kind:'circle', color:'#b18bff', depth:2 },
+    ProcessBoxMgmt:  { label:'Process box mgmt', kind:'circle', color:'#b18bff', depth:2 },
+    AddFormField:    { label:'Add new form field',kind:'circle', color:'#b18bff', depth:2 },
+    AddNewRule:      { label:'Add new rule',     kind:'circle', color:'#ff9f6a', depth:3 },
+    Reason:          { label:'Reason for rejection/cancellation', kind:'circle', color:'#94a3b8', depth:2 },
+    EditWorkflow:    { label:'Edit workflow', kind:'circle', color:'#94a3b8', depth:2 },
+    SendEmail:       { label:'Send Email',    kind:'circle', color:'#94a3b8', depth:2 },
+
+    GrantAccess:     { label:'Grant access',  kind:'circle', color:'#79f2c0', depth:1 },
+    AccessConfig:    { label:'Access config', kind:'circle', color:'#79f2c0', depth:1 },
+    User:            { label:'User',              kind:'pill', color:'#b18bff', depth:2 },
+    SMIExpert:       { label:'SMI expert',        kind:'pill', color:'#b18bff', depth:2 },
+    WBApprover:      { label:'Workbench approver',kind:'pill', color:'#b18bff', depth:2 },
+    SMIAdmin:        { label:'SMI admin',         kind:'pill', color:'#b18bff', depth:2 },
+    BlackbeltQL:     { label:'Blackbelt / QL',    kind:'pill', color:'#b18bff', depth:2 },
+    MBB:             { label:'MBB',               kind:'pill', color:'#b18bff', depth:2 },
+    Superadmin:      { label:'Superadmin',        kind:'pill', color:'#b18bff', depth:2 },
+    Developer:       { label:'Developer',         kind:'pill', color:'#b18bff', depth:2 },
+    AllRole:         { label:'All',               kind:'pill', color:'#b18bff', depth:2 },
+    MaterialMgmt:    { label:'Material mgmt',     kind:'pill', color:'#b18bff', depth:2 },
+
+    SimpleSearch:    { label:'Simple search',       kind:'circle', color:'#79f2c0', depth:1 },
+    SearchByComp:    { label:'Search by component', kind:'circle', color:'#79f2c0', depth:1 },
+    SearchByProd:    { label:'Search by product',   kind:'circle', color:'#79f2c0', depth:1 },
+    SearchEngineRule:{ label:'Search engine rule',  kind:'circle', color:'#b18bff', depth:1 },
+    UnitValueRule:   { label:'Unit value rule',     kind:'circle', color:'#b18bff', depth:1 }
+  };
+
+  // HIERARCHY (parent → children)
+  const CHILDREN = {
+    SIM: ['Comparison','WorkBench','ProcessFlow','RoleManagement','SearchEngine','ScrapFramework'],
+    Comparison: ['CompValTemplate','AuditTrail','Summary'],
+    Summary:    ['NewItem','RemovedItem','ModifiedItem','UnchangedItem','ReappearedItem'],
+    WorkBench:    ['ManualAddition'],
+    ManualAddition:['TemplateMgmt','ModifyMDB'],
+    TemplateMgmt: ['ApproveTpl','AddTpl','EditTpl'],
+    ModifyMDB:    ['EditParams','EditMDB'],
+    ProcessFlow:  ['FormMgmt','CreateProcess'],
+    FormMgmt:     ['RuleBookMgmt','ProcessBoxMgmt','AddFormField'],
+    RuleBookMgmt: ['AddNewRule'],
+    RoleManagement:['GrantAccess','AccessConfig'],
+    AccessConfig: ['User','SMIExpert','WBApprover','SMIAdmin','BlackbeltQL','MBB','Superadmin','Developer','AllRole','MaterialMgmt'],
+    SearchEngine: ['SimpleSearch','SearchByComp','SearchByProd','SearchEngineRule','UnitValueRule']
+  };
+
+  // Shared children: from CreateProcess to Reason, EditWorkflow, SendEmail
+  const SHARED_PF = ['Reason','EditWorkflow','SendEmail'];
+  CHILDREN.FormMgmt.push(...SHARED_PF);
+  const EXTRA_LINKS = SHARED_PF.map(c => ({ source:'CreateProcess', target:c, shared:true }));
+
+  // Cross-module connections (highlight network)
+  const CROSS_LINKS = [
+    ['Comparison','WorkBench'], ['Comparison','SearchEngine'], ['Comparison','ScrapFramework'],
+    ['Comparison','RoleManagement'], ['WorkBench','SearchEngine'], ['ProcessFlow','SearchEngine'],
+    ['RoleManagement','WorkBench'], ['RoleManagement','SearchEngine']
+  ];
+
+  // Build parent map (reverse)
+  const PARENT_OF = {};
+  Object.entries(CHILDREN).forEach(([p, kids]) => {
+    kids.forEach(k => { (PARENT_OF[k] = PARENT_OF[k] || []).push(p); });
+  });
+  EXTRA_LINKS.forEach(l => {
+    PARENT_OF[l.target] = PARENT_OF[l.target] || [];
+    if (!PARENT_OF[l.target].includes(l.source)) PARENT_OF[l.target].push(l.source);
+  });
+
+  // State
+  let visible = new Set(['SIM']);
+  let expanded = new Set();
+  let highlightModule = null;    // focus on module when expand-all active
+
+  // helpers
+  function hasChildren(id) {
+    const c = CHILDREN[id] || [];
+    const extra = EXTRA_LINKS.filter(l => l.source === id).map(l => l.target);
+    return (c.length + extra.length) > 0;
+  }
+  function childrenOf(id) {
+    const c = (CHILDREN[id] || []).slice();
+    EXTRA_LINKS.forEach(l => { if(l.source === id && !c.includes(l.target)) c.push(l.target); });
+    return c;
+  }
+  function descendants(id) {
+    const out = new Set();
+    const stack = [...childrenOf(id)];
+    while(stack.length) {
+      const n = stack.pop();
+      if(out.has(n)) continue;
+      out.add(n);
+      childrenOf(n).forEach(k => stack.push(k));
+    }
+    return out;
+  }
+  function expand(id) {
+    if(!hasChildren(id)) return false;
+    if(expanded.has(id)) return false;
+    expanded.add(id);
+    childrenOf(id).forEach(c => visible.add(c));
+    return true;
+  }
+  function collapse(id) {
+    if(!expanded.has(id)) return false;
+    const desc = descendants(id);
+    expanded.delete(id);
+    desc.forEach(d => {
+      const stillVisible = (PARENT_OF[d] || []).some(p => expanded.has(p));
+      if(!stillVisible) { visible.delete(d); expanded.delete(d); }
+    });
+    return true;
+  }
+  function toggle(id) {
+    if(id === 'SIM' && !expanded.has('SIM')) { expand('SIM'); return; }
+    if(expanded.has(id)) collapse(id); else expand(id);
+  }
+  function isMainModule(id) { return (CHILDREN.SIM || []).includes(id); }
+  function allMainExpanded() { return CHILDREN.SIM.every(m => expanded.has(m) || !hasChildren(m)); }
+
+  // D3 setup
+  const stage = document.getElementById('stage');
+  const svg = d3.select('#canvas');
+  let W = stage.clientWidth, H = stage.clientHeight;
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+  const defs = svg.append('defs');
+  function gradient(id, c1, c2) {
+    const g = defs.append('radialGradient').attr('id', id).attr('cx','35%').attr('cy','30%').attr('r','75%');
+    g.append('stop').attr('offset','0%').attr('stop-color', c1);
+    g.append('stop').attr('offset','100%').attr('stop-color', c2);
+  }
+  gradient('g-core', '#fff8d6', '#ffb347');
+  gradient('g-module','#d4fbff', '#1c7ed6');
+  gradient('g-d1','#d6ffe7','#0ca678');
+  gradient('g-d2','#ece1ff','#6d49c8');
+  gradient('g-d3','#ffe2cf','#d9480f');
+  gradient('g-leaf','#e2e8f0','#475569');
+  const glowFilter = defs.append('filter').attr('id','glow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glowFilter.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b');
+  const fm = glowFilter.append('feMerge');
+  fm.append('feMergeNode').attr('in','b');
+  fm.append('feMergeNode').attr('in','SourceGraphic');
+
+  // Animated particles
+  const partLayer = svg.append('g').attr('class','particles');
+  function spawnParticles() {
+    partLayer.selectAll('*').remove();
+    const n = 32;
+    for(let i=0;i<n;i++) {
+      const c = partLayer.append('circle')
+        .attr('r', Math.random()*1.8 + 0.5)
+        .attr('cx', Math.random()*W).attr('cy', Math.random()*H)
+        .attr('opacity', Math.random()*0.5 + 0.2);
+      const dur = 6000 + Math.random()*8000;
+      (function loop(el){
+        el.transition().duration(dur)
+          .attr('cx', Math.random()*W).attr('cy', Math.random()*H)
+          .attr('opacity', Math.random()*0.4 + 0.15)
+          .on('end', ()=>loop(el));
+      })(c);
+    }
+  }
+
+  const zoomLayer = svg.append('g').attr('class','zoom');
+  const linkLayer = zoomLayer.append('g').attr('class','links');
+  const crossLayer = zoomLayer.append('g').attr('class','cross');
+  const nodeLayer = zoomLayer.append('g').attr('class','nodes');
+  const zoom = d3.zoom().scaleExtent([0.35, 2.6]).on('zoom', ev => zoomLayer.attr('transform', ev.transform));
+  svg.call(zoom);
+
+  let sim = d3.forceSimulation()
+    .force('link', d3.forceLink().id(d=>d.id).distance(d=> d.target.kind==='pill'? 100 : 140).strength(0.55))
+    .force('charge', d3.forceManyBody().strength(d => d.kind==='core'? -950 : d.kind==='module'? -580 : -280))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collide', d3.forceCollide(d => radiusOf(d) + 14))
+    .force('radial', d3.forceRadial(d => radialDist(d), W/2, H/2).strength(d => d.kind==='module'? 0.2 : 0.05))
+    .alphaDecay(0.04);
+
+  function radialDist(d) {
+    if(d.id === 'SIM') return 0;
+    if(d.kind === 'module') return Math.min(W,H)*0.27;
+    if(d.depth === 1) return Math.min(W,H)*0.42;
+    if(d.depth === 2) return Math.min(W,H)*0.52;
+    return Math.min(W,H)*0.60;
+  }
+  function radiusOf(d) {
+    if(d.kind === 'core') return 48;
+    if(d.kind === 'module') return 38;
+    if(d.kind === 'pill') return 14;
+    if(d.depth === 1) return 30;
+    if(d.depth === 2) return 26;
+    return 22;
+  }
+
+  function currentGraph() {
+    const nodes = [...visible].map(id => ({ id, ...NODES[id] }));
+    const links = []; const seen = new Set();
+    nodes.forEach(n => {
+      (PARENT_OF[n.id] || []).forEach(p => {
+        if(visible.has(p) && expanded.has(p)) {
+          const key = p+'->'+n.id;
+          if(!seen.has(key)){
+            seen.add(key);
+            links.push({ source: p, target: n.id, shared: SHARED_PF.includes(n.id) });
+          }
+        }
+      });
+    });
+    return { nodes, links };
+  }
+  function crossGraph() {
+    if(!allMainExpanded()) return [];
+    return CROSS_LINKS.map(([a,b])=>({ source: a, target: b }));
+  }
+
+  const posCache = new Map();
+
+  function render() {
+    const { nodes, links } = currentGraph();
+    nodes.forEach(n => {
+      const p = posCache.get(n.id);
+      if(p) { n.x = p.x; n.y = p.y; }
+      else if(n.id === 'SIM') { n.x = W/2; n.y = H/2; }
+      else {
+        const parent = (PARENT_OF[n.id] || []).find(pid => posCache.get(pid));
+        if(parent) { const pp = posCache.get(parent); n.x = pp.x + (Math.random()-0.5)*18; n.y = pp.y + (Math.random()-0.5)*18; }
+        else { n.x = W/2 + (Math.random()-0.5)*40; n.y = H/2 + (Math.random()-0.5)*40; }
+      }
+    });
+
+    // links
+    const ld = linkLayer.selectAll('path.link-line').data(links, d => d.source+'->'+d.target);
+    ld.exit().transition().duration(200).attr('opacity',0).remove();
+    const lEnter = ld.enter().append('path').attr('class','link-line')
+      .attr('stroke', d => d.shared ? 'rgba(255,159,106,.6)' : 'rgba(125,249,255,.5)')
+      .attr('stroke-width', 1.7).attr('stroke-dasharray', d => d.shared ? '4 4' : null).attr('opacity',0);
+    lEnter.transition().duration(400).attr('opacity',1);
+    const linkSel = lEnter.merge(ld);
+
+    const cross = crossGraph();
+    const cd = crossLayer.selectAll('path.cross-line').data(cross, d => d.source+'~'+d.target);
+    cd.exit().transition().duration(200).attr('opacity',0).remove();
+    const cEnter = cd.enter().append('path').attr('class','cross-line link-line')
+      .attr('stroke','rgba(255,106,213,.4)').attr('stroke-width',1.3).attr('stroke-dasharray','3 6').attr('opacity',0);
+    cEnter.transition().duration(500).attr('opacity',1);
+    const crossSel = cEnter.merge(cd);
+
+    const nd = nodeLayer.selectAll('g.node').data(nodes, d => d.id);
+    nd.exit().transition().duration(220).attr('opacity',0).attr('transform', 'scale(0.2)').remove();
+
+    const nEnter = nd.enter().append('g').attr('class', d => 'node ' + d.kind).attr('opacity',0)
+      .attr('transform', d => `translate(${d.x},${d.y}) scale(0.2)`).style('cursor','pointer');
+
+    nEnter.each(function(d){
+      const g = d3.select(this);
+      if(d.kind === 'pill') {
+        const padX = 12, padY = 7;
+        const text = g.append('text').attr('class','node-label').attr('font-size',12)
+          .attr('font-weight', hasChildren(d.id) ? 700 : 500).attr('fill','#0b1224').text(d.label);
+        const bb = text.node().getBBox();
+        const w = bb.width + padX*2, h = bb.height + padY*2;
+        g.insert('rect','text').attr('class','pill-bg')
+          .attr('x', -w/2).attr('y', -h/2).attr('rx', h/2).attr('ry', h/2)
+          .attr('width', w).attr('height', h)
+          .attr('fill', `url(#g-d${Math.min(3,d.depth)} )`).attr('stroke', 'rgba(255,255,255,.5)').attr('stroke-width',1);
+        text.attr('y',1);
+        d._w = w; d._h = h;
+      } else {
+        const r = radiusOf(d);
+        const grad = d.kind==='core' ? 'g-core' : d.kind==='module' ? 'g-module' : 
+                     d.depth===1 ? 'g-d1' : d.depth===2 ? 'g-d2' : d.depth===3 ? 'g-d3' : 'g-leaf';
+        g.append('circle').attr('class','node-circle').attr('r', r).attr('fill', `url(#${grad})`)
+          .attr('stroke', 'rgba(255,255,255,.7)').attr('stroke-width', d.kind==='core'?2.2:1.6);
+        if(d.kind==='core') {
+          g.append('circle').attr('r', r+8).attr('fill','none').attr('stroke','rgba(255,209,102,.5)')
+            .attr('stroke-width',1).attr('stroke-dasharray','2 6');
+        }
+        const textGroup = g.append('text').attr('class','node-label');
+        fitTextInCircle(textGroup, d.label, r);
+      }
+    });
+    nEnter.transition().duration(500).ease(d3.easeBackOut.overshoot(1.2))
+      .attr('opacity',1).attr('transform', d => `translate(${d.x},${d.y}) scale(1)`);
+    
+    nd.select('text.node-label').attr('font-weight', d => hasChildren(d.id) && !expanded.has(d.id) ? 700 : (d.kind==='pill'?500:600));
+    const nodeSel = nEnter.merge(nd);
+    nodeSel.on('click', function(ev,d){
+      ev.stopPropagation();
+      d3.select(this).select('circle.node-circle').transition().duration(120).attr('stroke','#ffd166').attr('stroke-width',3.6)
+        .transition().duration(220).attr('stroke','rgba(255,255,255,.7)').attr('stroke-width', d.kind==='core'?2.2:1.6);
+      toggle(d.id);
+      if(allMainExpanded() && isMainModule(d.id)) {
+        highlightModule = (highlightModule === d.id) ? null : d.id;
+      } else if(!allMainExpanded()) highlightModule = null;
+      render();
+      applyHighlight();
+    }).on('mouseenter', function(ev,d){ showTip(ev,d); d3.select(this).select('circle.node-circle').transition().duration(150).attr('filter','url(#glow)'); })
+      .on('mousemove', moveTip).on('mouseleave', function(){ hideTip(); d3.select(this).select('circle.node-circle').transition().duration(150).attr('filter',null); })
+      .call(d3.drag().on('start', (ev,d)=>{ if(!ev.active) sim.alphaTarget(0.25).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (ev,d)=>{ d.fx=ev.x; d.fy=ev.y; }).on('end', (ev,d)=>{ if(!ev.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+
+    sim.nodes(nodes).on('tick', () => {
+      linkSel.attr('d', d => curve(d.source, d.target));
+      crossSel.attr('d', d => {
+        const s = nodes.find(n=>n.id===d.source); const t = nodes.find(n=>n.id===d.target);
+        if(!s||!t) return '';
+        return curve(s,t, true);
+      });
+      nodeSel.attr('transform', d => `translate(${d.x},${d.y})`);
+      nodes.forEach(n => posCache.set(n.id, {x:n.x, y:n.y}));
+    });
+    sim.force('link').links(links);
+    sim.force('collide').initialize(nodes);
+    sim.alpha(0.85).restart();
+    applyHighlight();
+    updateMode();
+  }
+
+  function curve(s, t, big=false) {
+    if(!s||!t||s.x==null||t.x==null) return '';
+    const dx = t.x - s.x, dy = t.y - s.y;
+    const dr = Math.sqrt(dx*dx+dy*dy) * (big ? 1.45 : 1.85);
+    return `M${s.x},${s.y} A${dr},${dr} 0 0,1 ${t.x},${t.y}`;
+  }
+
+  function fitTextInCircle(textSel, label, r) {
+    const maxWidth = r * 1.6;
+    let size = r >= 38 ? 13 : r >= 30 ? 12 : 11;
+    textSel.attr('font-size', size).text(label);
+    let bb = textSel.node().getBBox();
+    if(bb.width <= maxWidth) { textSel.attr('y', 1); return; }
+    while(bb.width > maxWidth && size > 8) { size--; textSel.attr('font-size', size); bb = textSel.node().getBBox(); }
+    if(bb.width <= maxWidth) { textSel.attr('y',1); return; }
+    const words = label.split(/\s+/);
+    const lines = []; let cur = '';
+    const test = textSel.append('tspan').attr('x',0).attr('font-size', size);
+    words.forEach(w => {
+      const tentative = cur ? cur+' '+w : w;
+      test.text(tentative);
+      if(test.node().getComputedTextLength() > maxWidth && cur) { lines.push(cur); cur = w; }
+      else cur = tentative;
+    });
+    if(cur) lines.push(cur);
+    test.remove();
+    const maxLines = r >= 30 ? 3 : 2;
+    const finalLines = lines.slice(0, maxLines);
+    if(lines.length > maxLines) { let last = finalLines[finalLines.length-1]; finalLines[finalLines.length-1] = last.length > 7 ? last.slice(0,6)+'…' : last+'…'; }
+    const lh = size+1;
+    const total = lh * finalLines.length;
+    finalLines.forEach((ln, i) => {
+      textSel.append('tspan').attr('x',0).attr('y', -total/2 + lh/2 + i*lh + lh*0.35).attr('font-size', size).text(ln);
+    });
+  }
+
+  function applyHighlight() {
+    const active = highlightModule && allMainExpanded() ? highlightModule : null;
+    const linked = new Set();
+    if(active){
+      linked.add(active);
+      CROSS_LINKS.forEach(([a,b]) => { if(a===active) linked.add(b); if(b===active) linked.add(a); });
+    }
+    nodeLayer.selectAll('g.node').transition().duration(260)
+      .attr('opacity', d => !active ? 1 : (linked.has(d.id) ? 1 : 0.2));
+    linkLayer.selectAll('path.link-line').transition().duration(260)
+      .attr('opacity', d => !active ? 1 : ((linked.has(d.source.id||d.source) && linked.has(d.target.id||d.target)) ? 1 : 0.1))
+      .attr('stroke-width', d => (!active || (linked.has(d.source.id||d.source) && linked.has(d.target.id||d.target))) ? 1.9 : 1);
+    crossLayer.selectAll('path.cross-line').transition().duration(260)
+      .attr('opacity', d => !active ? 1 : ((d.source===active || d.target===active) ? 1 : 0.08))
+      .attr('stroke', d => (!active || d.source===active||d.target===active) ? 'rgba(255,106,213,.95)' : 'rgba(255,106,213,.2)');
+  }
+
+  function updateMode() {
+    const chip = document.getElementById('modeChip');
+    if(highlightModule && allMainExpanded()) chip.innerHTML = `<span class="k">FOCUS</span> ${NODES[highlightModule].label}`;
+    else if(allMainExpanded()) chip.innerHTML = `<span class="k">MODE</span> network — click a module to focus`;
+    else chip.innerHTML = `<span class="k">MODE</span> explore`;
+  }
+
+  const tip = document.getElementById('tip');
+  function showTip(ev, d) {
+    const kidsCnt = childrenOf(d.id).length;
+    const verb = expanded.has(d.id) ? 'collapse' : (kidsCnt ? 'expand' : 'leaf');
+    tip.innerHTML = `<b>${d.label}</b> · ${kidsCnt ? kidsCnt+' child nodes' : 'terminal'} · <span style="color:#ff6ad5">${verb}</span>`;
+    tip.classList.add('show'); moveTip(ev);
+  }
+  function moveTip(ev) {
+    const rect = stage.getBoundingClientRect();
+    tip.style.left = (ev.clientX - rect.left + 14)+'px';
+    tip.style.top = (ev.clientY - rect.top + 14)+'px';
+  }
+  function hideTip() { tip.classList.remove('show'); }
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    visible.clear(); expanded.clear(); highlightModule = null;
+    visible.add('SIM'); posCache.clear();
+    render(); svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+  });
+  document.getElementById('centerBtn').addEventListener('click', ()=>{ svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity); });
+  document.getElementById('expandAllBtn').addEventListener('click', ()=>{
+    const queue = ['SIM'];
+    while(queue.length){ const id = queue.shift(); if(hasChildren(id) && !expanded.has(id)) { expand(id); childrenOf(id).forEach(c => queue.push(c)); } }
+    render();
+  });
+
+  let resizeTimer;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(()=>{
+      W = stage.clientWidth; H = stage.clientHeight;
+      svg.attr('viewBox', `0 0 ${W} ${H}`);
+      sim.force('center', d3.forceCenter(W/2, H/2));
+      sim.force('radial', d3.forceRadial(d => radialDist(d), W/2, H/2).strength(d => d.kind==='module'?0.2:0.05));
+      sim.alpha(0.45).restart();
+      spawnParticles();
+    }, 160);
+  });
+
+  spawnParticles();
+  render();
+  setTimeout(() => { if(!expanded.has('SIM')){ const simNode = nodeLayer.selectAll('g.node').filter(d=>d.id==='SIM'); simNode.select('circle.node-circle').transition().duration(300).attr('stroke','#ffd166').attr('stroke-width',3.8).transition().duration(400).attr('stroke','rgba(255,255,255,.7)').attr('stroke-width',2.2); } }, 800);
+})();
+</script>
+</body>
+</html>
