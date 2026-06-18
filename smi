@@ -340,29 +340,50 @@
     }
     return out;
   }
+  function rebuildVisible() {
+    const next = new Set(['SIM']);
+    const queue = ['SIM'];
+    while(queue.length) {
+      const current = queue.shift();
+      if(expanded.has(current)) {
+        childrenOf(current).forEach(child => {
+          if(!next.has(child)) {
+            next.add(child);
+            queue.push(child);
+          }
+        });
+      }
+    }
+    visible = next;
+  }
   function expand(id) {
     if(!hasChildren(id)) return false;
     if(expanded.has(id)) return false;
     expanded.add(id);
-    childrenOf(id).forEach(c => visible.add(c));
+    rebuildVisible();
     return true;
   }
   function collapse(id) {
     if(!expanded.has(id)) return false;
-    const desc = descendants(id);
     expanded.delete(id);
-    desc.forEach(d => {
-      const stillVisible = (PARENT_OF[d] || []).some(p => expanded.has(p));
-      if(!stillVisible) { visible.delete(d); expanded.delete(d); }
-    });
+    rebuildVisible();
     return true;
   }
   function toggle(id) {
-    if(id === 'SIM' && !expanded.has('SIM')) { expand('SIM'); return; }
+    if(id === 'SIM') {
+      if(expanded.has('SIM')) collapse('SIM'); else expand('SIM');
+      return;
+    }
     if(expanded.has(id)) collapse(id); else expand(id);
   }
   function isMainModule(id) { return (CHILDREN.SIM || []).includes(id); }
   function allMainExpanded() { return CHILDREN.SIM.every(m => expanded.has(m) || !hasChildren(m)); }
+
+  function getLinkKey(d, sep = '->') {
+    const s = typeof d.source === 'object' ? d.source.id : d.source;
+    const t = typeof d.target === 'object' ? d.target.id : d.target;
+    return `${s}${sep}${t}`;
+  }
 
   // D3 setup
   const stage = document.getElementById('stage');
@@ -476,7 +497,7 @@
     });
 
     // links
-    const ld = linkLayer.selectAll('path.link-line').data(links, d => d.source+'->'+d.target);
+    const ld = linkLayer.selectAll('path.link-line').data(links, d => getLinkKey(d, '->'));
     ld.exit().transition().duration(200).attr('opacity',0).remove();
     const lEnter = ld.enter().append('path').attr('class','link-line')
       .attr('stroke', d => d.shared ? 'rgba(255,159,106,.6)' : 'rgba(125,249,255,.5)')
@@ -485,7 +506,7 @@
     const linkSel = lEnter.merge(ld);
 
     const cross = crossGraph();
-    const cd = crossLayer.selectAll('path.cross-line').data(cross, d => d.source+'~'+d.target);
+    const cd = crossLayer.selectAll('path.cross-line').data(cross, d => getLinkKey(d, '~'));
     cd.exit().transition().duration(200).attr('opacity',0).remove();
     const cEnter = cd.enter().append('path').attr('class','cross-line link-line')
       .attr('stroke','rgba(255,106,213,.4)').attr('stroke-width',1.3).attr('stroke-dasharray','3 6').attr('opacity',0);
@@ -594,6 +615,7 @@
     if(lines.length > maxLines) { let last = finalLines[finalLines.length-1]; finalLines[finalLines.length-1] = last.length > 7 ? last.slice(0,6)+'…' : last+'…'; }
     const lh = size+1;
     const total = lh * finalLines.length;
+    textSel.text(null);
     finalLines.forEach((ln, i) => {
       textSel.append('tspan').attr('x',0).attr('y', -total/2 + lh/2 + i*lh + lh*0.35).attr('font-size', size).text(ln);
     });
@@ -640,7 +662,11 @@
   document.getElementById('resetBtn').addEventListener('click', ()=>{
     visible.clear(); expanded.clear(); highlightModule = null;
     visible.add('SIM'); posCache.clear();
-    render(); svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    linkLayer.selectAll('*').remove();
+    crossLayer.selectAll('*').remove();
+    nodeLayer.selectAll('*').remove();
+    render();
+    svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
   });
   document.getElementById('centerBtn').addEventListener('click', ()=>{ svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity); });
   document.getElementById('expandAllBtn').addEventListener('click', ()=>{
